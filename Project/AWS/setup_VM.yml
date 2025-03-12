@@ -105,3 +105,41 @@
     - debug:
         msg: "Helm installed successfully: {{ helm_version.stdout }
 
+              # ------------------------
+    # Install ArgoCD
+    # ------------------------
+    - name: Create ArgoCD namespace
+      kubernetes.core.k8s:
+        name: argocd
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Install ArgoCD
+      kubernetes.core.k8s:
+        state: present
+        src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+        namespace: argocd
+
+    - name: Wait for ArgoCD pods to be ready
+      command: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
+
+    - name: Expose ArgoCD Server via LoadBalancer
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: argocd-server-loadbalancer
+            namespace: argocd
+          spec:
+            type: LoadBalancer
+            selector:
+              app.kubernetes.io/name: argocd-server
+            ports:
+              - protocol: TCP
+                port: 80
+                targetPort: 443
+
+
