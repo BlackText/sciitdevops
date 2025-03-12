@@ -1,4 +1,5 @@
 ---
+
 - name: Configure EC2 instance for K3s and deploy ArgoCD
   hosts: all
   become: yes
@@ -25,4 +26,82 @@
       pip:
         name: kubernetes
         state: present
+
+
+    - name: Install required dependencies (curl, apt-transport-https, gnupg)
+      apt:
+        name:
+          - curl
+          - apt-transport-https
+          - gnupg
+        state: present
+      become: yes
+
+    - name: Add Kubernetes GPG key securely
+      shell: |
+        curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+      become: yes
+
+    - name: Install kubectl using the official script (fallback)
+      shell: |
+        curl -LO "https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl"
+        chmod +x ./kubectl
+        mv ./kubectl /usr/local/bin/kubectl
+      become: yes
+
+    - name: Ensure K3s is installed
+      shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Ensure K3s service is running
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+
+    - name: Set up Kubernetes config for kubectl
+      become: yes
+      shell: |
+        mkdir -p /home/ubuntu/.kube
+        mkdir -p /home/root/.kube
+        mkdir -p /root/.kube
+        sudo k3s kubectl config view --raw > /home/ubuntu/.kube/config
+        sudo k3s kubectl config view --raw > /root/.kube/config
+        chmod 777 /home/ubuntu/.kube/config
+        chmod 777 /root/.kube/config
+
+        sleep 5
+      args:
+        creates: /home/ubuntu/.kube/config
+
+    - name: Ensure Kubernetes config is accessible
+      command: test -f /home/ubuntu/.kube/config
+      register: kubeconfig_check
+      retries: 5
+      delay: 3
+      until: kubeconfig_check.rc == 0
+
+    # - name: Test kubectl connection
+    #   command: kubectl get nodes
+    #   register: kubectl_test
+    #   become: yes
+    #   retries: 5
+    #   delay: 10
+    #   until: kubectl_test.rc == 0
+
+
+    - name: Install Helm
+      shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Check Helm version
+      command: helm version
+      register: helm_version
+      changed_when: false
+
+    - debug:
+        msg: "Helm installed successfully: {{ helm_version.stdout }
 
