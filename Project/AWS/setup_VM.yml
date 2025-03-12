@@ -1,0 +1,28 @@
+---
+- name: Configure EC2 instance for K3s and deploy ArgoCD
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  tasks:
+
+
+    - name: Enable universe repository
+      apt_repository:
+        repo: 'deb http://archive.ubuntu.com/ubuntu {{ ansible_lsb.codename }} universe'
+        state: present
+
+    - name: Ensure Python 3 and pip3 are installed
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+      become: yes
+
+    - name: Install kubernetes Python library
+      pip:
+        name: kubernetes
+        state: present
+
