@@ -198,3 +198,37 @@
 
 
 
+    - name: Add Prometheus Helm repository
+      command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+    - name: Update Helm repositories
+      command: helm repo update
+
+    - name: Install Prometheus using Helm
+      command: >
+        helm install prometheus prometheus-community/prometheus
+        -n monitoring --create-namespace
+
+
+    - name: Wait for Prometheus pods to be ready
+      command: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=300s
+
+    - name: Expose Prometheus service via LoadBalancer
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: ~/.kube/config
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: prometheus-server
+            namespace: monitoring
+          spec:
+            type: LoadBalancer
+            selector:
+              app.kubernetes.io/name: prometheus
+            ports:
+              - protocol: TCP
+                port: 9090
+                targetPort: 9090
+
