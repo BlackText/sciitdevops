@@ -1,18 +1,25 @@
+# Declare the AWS region variable directly within the main.tf
+variable "aws_region" {
+  description = "AWS region for the infrastructure"
+  type        = string
+  default     = "us-east-1"  # Change this to your desired region
+}
+
+# Provider configuration
 provider "aws" {
   region = var.aws_region
 }
 
-# VPC
+# VPC Module
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.5.0"
 
-  name = "python-vpc"
-  cidr = "10.0.0.0/16"
-
-  azs             = ["${var.aws_region}a", "${var.aws_region}b"]
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
-  public_subnets  = ["10.0.3.0/24", "10.0.4.0/24"]
+  name             = "python-vpc"
+  cidr             = "10.0.0.0/16"
+  azs              = data.aws_availability_zones.available.names  # Dynamically get AZs based on the region
+  private_subnets  = ["10.0.1.0/24", "10.0.2.0/24"]
+  public_subnets   = ["10.0.3.0/24", "10.0.4.0/24"]
   enable_nat_gateway = true
 }
 
@@ -110,7 +117,7 @@ resource "aws_instance" "python_vm" {
       host        = self.public_ip
     }
   }
-}  # <-- Closing brace for aws_instance.python_vm resource
+}
 
 # Output Instance Public IP
 output "python_vm_public_ip" {
@@ -118,3 +125,5 @@ output "python_vm_public_ip" {
   value       = aws_instance.python_vm.public_ip
 }
 
+# Data source to fetch availability zones dynamically
+data "aws_availability_zones" "available" {}
