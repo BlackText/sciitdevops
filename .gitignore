@@ -1,1 +1,2 @@
 *.box
+project/terraform/aws/.terraform.lock.hcl
