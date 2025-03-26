@@ -1,0 +1,307 @@
+---
+- name: Configure EC2 instance for K3s and deploy ArgoCD
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  tasks:
+
+
+    - name: Enable universe repository
+      apt_repository:
+        repo: 'deb http://archive.ubuntu.com/ubuntu {{ ansible_lsb.codename }} universe'
+        state: present
+
+    - name: Ensure Python 3 and pip3 are installed
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+      become: yes
+
+    - name: Install kubernetes Python library
+      pip:
+        name: kubernetes
+        state: present
+
+    - name: Install required dependencies (curl, apt-transport-https, gnupg)
+      apt:
+        name:
+          - curl
+          - apt-transport-https
+          - gnupg
+        state: present
+      become: yes
+
+    - name: Add Kubernetes GPG key securely
+      shell: |
+        curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+      become: yes
+
+    - name: Install kubectl using the official script (fallback)
+      shell: |
+        curl -LO "https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl"
+        chmod +x ./kubectl
+        mv ./kubectl /usr/local/bin/kubectl
+      become: yes
+
+    - name: Ensure K3s is installed
+      shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Ensure K3s service is running
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+
+    - name: Set up Kubernetes config for kubectl
+      become: yes
+      shell: |
+        mkdir -p /home/ubuntu/.kube
+        mkdir -p /home/root/.kube
+        mkdir -p /root/.kube
+        sudo k3s kubectl config view --raw > /home/ubuntu/.kube/config
+        sudo k3s kubectl config view --raw > /root/.kube/config
+        chmod 777 /home/ubuntu/.kube/config
+        chmod 777 /root/.kube/config
+
+        sleep 5
+      args:
+        creates: /home/ubuntu/.kube/config
+
+    - name: Ensure Kubernetes config is accessible
+      command: test -f /home/ubuntu/.kube/config
+      register: kubeconfig_check
+      retries: 5
+      delay: 3
+      until: kubeconfig_check.rc == 0
+
+    # - name: Test kubectl connection
+    #   command: kubectl get nodes
+    #   register: kubectl_test
+    #   become: yes
+    #   retries: 5
+    #   delay: 10
+    #   until: kubectl_test.rc == 0
+
+
+    - name: Install Helm
+      shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Check Helm version
+      command: helm version
+      register: helm_version
+      changed_when: false
+
+    - debug:
+        msg: "Helm installed successfully: {{ helm_version.stdout }}"
+
+    
+
+
+
+
+    # ------------------------
+    # Install ArgoCD
+    # ------------------------
+    - name: Create ArgoCD namespace
+      kubernetes.core.k8s:
+        name: argocd
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Install ArgoCD
+      kubernetes.core.k8s:
+        state: present
+        src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+        namespace: argocd
+
+    - name: Wait for ArgoCD pods to be ready
+      command: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
+
+    - name: Expose ArgoCD Server via LoadBalancer
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: argocd-server-loadbalancer
+            namespace: argocd
+          spec:
+            type: LoadBalancer
+            selector:
+              app.kubernetes.io/name: argocd-server
+            ports:
+              - protocol: TCP
+                port: 80
+                targetPort: 443
+
+    - name: Get ArgoCD admin password
+      shell: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 --decode
+      register: argocd_admin_password
+      ignore_errors: true  # This allows the playbook to continue even if the task fails
+
+
+    - name: Display ArgoCD login info
+      debug:
+        msg: "ArgoCD UI is accessible via LoadBalancer. Login with 'admin' and password: {{ argocd_admin_password.stdout }}"
+
+    # ------------------------
+    # Deploy Jenkins using ArgoCD
+    # ------------------------
+    - name: Create Jenkins namespace
+      kubernetes.core.k8s:
+        name: jenkins
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Create ArgoCD Application for Jenkins
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: jenkins
+            namespace: argocd
+          spec:
+            destination:
+              namespace: jenkins
+              server: https://kubernetes.default.svc
+            project: default
+            source:
+              repoURL: https://charts.jenkins.io
+              targetRevision: "5.8.6"  # Ensure this is a valid version
+              chart: jenkins
+              helm:
+                values: |
+                  controller:
+                    image:
+                      registry: docker.io
+                      repository: cristid9/custom-jenkins
+                      tag: latest
+                    serviceType: LoadBalancer
+                    admin:
+                      username: "admin"
+                      password: "admin"  # Plain text (not recommended)
+                    installPlugins:
+                      - git:5.7.0
+                      - kubernetes:1.30.1
+                      - ssh:158.ve2a_e90fb_7319
+                      - ssh-agent:384.ve275343791a_6
+                      - ssh-steps:2.0.79.v1d1b_5f76dda_8
+                  podSecurityContextOverride:
+                    runAsNonRoot: true
+                    runAsUser: 1000
+                    supplementalGroups: [1000]
+
+            syncPolicy:
+              automated:
+                selfHeal: true
+                prune: true
+
+
+    - name: Add Prometheus Helm repository
+      command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+    - name: Update Helm repositories
+      command: helm repo update
+
+    - name: Install Prometheus using Helm
+      command: >
+        helm install prometheus prometheus-community/prometheus
+        -n monitoring --create-namespace
+
+
+    - name: Wait for Prometheus pods to be ready
+      command: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=300s
+
+    - name: Expose Prometheus service via LoadBalancer
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: ~/.kube/config
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: prometheus-server
+            namespace: monitoring
+          spec:
+            type: LoadBalancer
+            selector:
+              app.kubernetes.io/name: prometheus
+            ports:
+              - protocol: TCP
+                port: 9090
+                targetPort: 9090
+
+    # ------------------------
+    # Install Grafana
+    # ------------------------
+
+    - name: Create Grafana namespace
+      kubernetes.core.k8s:
+        name: grafana
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Add Grafana Helm repository
+      command: helm repo add grafana https://grafana.github.io/helm-charts
+
+    - name: Update Helm repositories
+      command: helm repo update
+
+    - name: Install Grafana using Helm
+      command: >
+        helm install my-grafana grafana/grafana --namespace grafana
+
+
+
+
+
+
+
+    - name: Wait for Grafana pods to be ready
+      command: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=grafana -n grafana --timeout=300s
+
+    - name: Expose Grafana service via LoadBalancer
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: ~/.kube/config
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: grafana
+            namespace: grafana
+          spec:
+            type: LoadBalancer
+            selector:
+              app.kubernetes.io/name: grafana
+            ports:
+              - protocol: TCP
+                port: 80
+                targetPort: 3000
+
+
+    # - name: Wait for Jenkins deployment
+    #   command: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=jenkins -n jenkins --timeout=1800s
+
+    # - name: Get Jenkins admin password
+    #   command: kubectl -n jenkins get secret jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 --decode
+    #   register: jenkins_admin_password
+
+    # - name: Display Jenkins login info
+    #   debug:
+    #     msg: "Jenkins UI is accessible via LoadBalancer. Login with 'admin' and password: {{ jenkins_admin_password.stdout }}"
