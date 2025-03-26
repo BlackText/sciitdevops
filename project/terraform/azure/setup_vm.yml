@@ -1,0 +1,124 @@
+---
+- name: Configure EC2 instance for K3s
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3  # Explicitly set Python
+  tasks:
+
+    - name: Ensure Python is installed (required for Ansible)
+      raw: sudo yum install -y python3
+      changed_when: false
+
+    - name: Gather facts again after installing Python
+      setup:
+
+    - name: Manually set package manager backend
+      set_fact:
+        ansible_pkg_mgr: yum
+
+    - name: Update Yum packages
+      yum:
+        name: "*"
+        state: latest
+      vars:
+        ansible_pkg_mgr: yum  # Force Ansible to use Yum
+
+    - name: Install required packages
+      yum:
+        name:
+          - docker
+          - firewalld
+          - unzip
+        state: present
+      vars:
+        ansible_pkg_mgr: yum  # Force Ansible to use Yum
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to the Docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Install K3s
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode=644" sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Reload systemd to detect K3s service
+      systemd:
+        daemon_reload: yes
+
+    - name: Check if K3s service exists
+      command: systemctl list-units --type=service | grep k3s
+      register: k3s_service_check
+      ignore_errors: yes
+
+    - name: Ensure K3s service is started and enabled
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      when: k3s_service_check.rc == 0
+
+    - name: Manually create k3s service if it doesn't exist
+      copy:
+        content: |
+          [Unit]
+          Description=k3s service
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/k3s server
+          Restart=always
+          LimitNOFILE=1048576
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/k3s.service
+        mode: '0644'
+      when: k3s_service_check.rc != 0
+
+    - name: Reload systemd after creating k3s service file
+      systemd:
+        daemon_reload: yes
+      when: k3s_service_check.rc != 0
+
+    - name: Enable and start K3s service (after creating service file)
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      when: k3s_service_check.rc != 0
+
+    - name: Configure firewall (firewalld)
+      block:
+        - name: Enable and start firewalld
+          systemd:
+            name: firewalld
+            state: started
+            enabled: yes
+
+        - name: Allow SSH
+          firewalld:
+            service: ssh
+            permanent: yes
+            state: enabled
+
+        - name: Allow k3s API traffic
+          firewalld:
+            port: 6443/tcp
+            permanent: yes
+            state: enabled
+
+        - name: Reload firewall
+          command: firewall-cmd --reload
+
