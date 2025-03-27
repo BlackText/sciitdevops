@@ -119,7 +119,7 @@ resource "aws_instance" "python_vm" {
   }
 }
 
- Output Instance Public IP
+# Output Instance Public IP
 output "python_vm_public_ip" {
   description = "Public IP of the Python server"
   value       = aws_instance.python_vm.public_ip
