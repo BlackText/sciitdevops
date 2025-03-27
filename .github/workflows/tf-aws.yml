@@ -105,15 +105,15 @@ jobs:
       - name: Set correct permissions for SSH key
         run: chmod 600 ./aws.pem
 
-      - name: Check SSH Key Format
-        run: |
-          sudo apt-get install libssl-dev
-          cat ./aws.pem
-          ssh-keygen -l -f ./aws.pem || echo "Invalid SSH key!"
-
-      - name: Convert SSH key to RSA format
-        run: ssh-keygen -p -m PEM -f ./aws.pem -o -P "" -N ""
-
+#      - name: Check SSH Key Format
+#        run: |
+#          sudo apt-get install libssl-dev
+#          cat ./aws.pem
+#          ssh-keygen -l -f ./aws.pem || echo "Invalid SSH key!"
+#
+#      - name: Convert SSH key to RSA format
+#        run: ssh-keygen -p -m PEM -f ./aws.pem -o -P "" -N ""
+#
       - name: Test SSH connection
         run: |
           INSTANCE_IP=$(terraform output -json k3s_vm_public_ip | jq -r 'if type == "string" then . else .[0] end')
