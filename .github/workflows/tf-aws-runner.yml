@@ -24,7 +24,7 @@ jobs:
         with:
           aws-access-key-id: '${{ secrets.AWS_ACCESS_KEY_ID }}'
           aws-secret-access-key: '${{ secrets.AWS_SECRET_ACCESS_KEY }}'
-          aws-region: 'eu-west-1'
+          aws-region: 'us-east-1'
 
 
       - name: Install AWS CLI v2
@@ -34,7 +34,7 @@ jobs:
           rm /tmp/awscliv2.zip
           sudo /tmp/aws/install --update
           rm -rf /tmp/aws/
-          export AWS_REGION=eu-central-1  # Change this to your desired region
+          export AWS_REGION=us-east-1  # Change this to your desired region
           aws ssm get-parameter --name "ssh_key" --query "Parameter.Value" --output text --region $AWS_REGION >> aws.pem
 
 
