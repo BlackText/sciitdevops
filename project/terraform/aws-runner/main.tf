@@ -95,31 +95,31 @@ resource "aws_instance" "python_vm" {
 
   # Ensure that the EC2 instance is fully initialized before running remote-exec
   depends_on = [aws_security_group.python_sg]
-##
-#  # Install Python on the EC2 instance using a shell script
-#  provisioner "remote-exec" {
-#    inline = [
-#      "sleep 60",  # Wait for 60 seconds to ensure the EC2 instance is initialized
-#      "sudo ufw disable",  # Disable UFW for testing purposes
-#      "sudo apt update -y",
-#      "sudo apt install -y python3 python3-pip",
-#      "sudo apt install -y python3-venv",
-#      "python3 --version",
-#      "sudo ufw allow 22",  # Ensure port 22 is allowed
-#      "sudo ufw allow 8080",  # Ensure port 8080 is open in UFW firewall
-#      "sudo ufw enable"
-#    ]
-#
-#    connection {
-#      type        = "ssh"
-#      user        = "ubuntu"
-#      private_key = file("./aws.pem")  # Path to your private key
-#      host        = self.public_ip
-#    }
-#  }
-#}
-#
-# Output Instance Public IP
+
+  # Install Python on the EC2 instance using a shell script
+  provisioner "remote-exec" {
+    inline = [
+      "sleep 60",  # Wait for 60 seconds to ensure the EC2 instance is initialized
+      "sudo ufw disable",  # Disable UFW for testing purposes
+      "sudo apt update -y",
+      "sudo apt install -y python3 python3-pip",
+      "sudo apt install -y python3-venv",
+      "python3 --version",
+      "sudo ufw allow 22",  # Ensure port 22 is allowed
+      "sudo ufw allow 8080",  # Ensure port 8080 is open in UFW firewall
+      "sudo ufw enable"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("./aws.pem")  # Path to your private key
+      host        = self.public_ip
+    }
+  }
+}
+
+ Output Instance Public IP
 output "python_vm_public_ip" {
   description = "Public IP of the Python server"
   value       = aws_instance.python_vm.public_ip
