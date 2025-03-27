@@ -24,7 +24,7 @@ jobs:
         with:
           aws-access-key-id: '${{ secrets.AWS_ACCESS_KEY_ID }}'
           aws-secret-access-key: '${{ secrets.AWS_SECRET_ACCESS_KEY }}'
-          aws-region: 'us-east-1'
+          aws-region: 'eu-west-1'
 
 
       - name: Install AWS CLI v2
@@ -35,7 +35,8 @@ jobs:
           sudo /tmp/aws/install --update
           rm -rf /tmp/aws/
           export AWS_REGION=us-east-1  # Change this to your desired region
-          aws ssm get-parameter --name "ssh_key" --query "Parameter.Value" --output text --region $AWS_REGION >> aws.pem
+          aws ssm get-parameter --name "ssh_key" --query "Parameter.Value" --output text --region $AWS_REGION >> ./aws.pem
+          cat aws.pem
 
 
       #  Add SSH Key from GitHub Secrets
@@ -105,21 +106,21 @@ jobs:
       - name: Set correct permissions for SSH key
         run: chmod 600 ./aws.pem
 
-#      - name: Check SSH Key Format
-#        run: |
-#          sudo apt-get install libssl-dev
-#          cat ./aws.pem
-#          ssh-keygen -l -f ./aws.pem || echo "Invalid SSH key!"
-#
-#      - name: Convert SSH key to RSA format
-#        run: ssh-keygen -p -m PEM -f ./aws.pem -o -P "" -N ""
-#
-#      - name: Test SSH connection
-#        run: |
-#          INSTANCE_IP=$(terraform output -json k3s_vm_public_ip | jq -r 'if type == "string" then . else .[0] end')
-#
-#          echo "Trying to SSH into $INSTANCE_IP"
-#          ssh -vvv -o StrictHostKeyChecking=no -i ./aws.pem ubuntu@$INSTANCE_IP
+      - name: Check SSH Key Format
+        run: |
+          sudo apt-get install libssl-dev
+          cat ./aws.pem
+          ssh-keygen -l -f ./aws.pem || echo "Invalid SSH key!"
+
+      - name: Convert SSH key to RSA format
+        run: ssh-keygen -p -m PEM -f ./aws.pem -o -P "" -N ""
+
+      - name: Test SSH connection
+        run: |
+          INSTANCE_IP=$(terraform output -json k3s_vm_public_ip | jq -r 'if type == "string" then . else .[0] end')
+
+          echo "Trying to SSH into $INSTANCE_IP"
+          ssh -vvv -o StrictHostKeyChecking=no -i ./aws.pem ubuntu@$INSTANCE_IP
 
 
       # Install Ansiblegit 
@@ -131,6 +132,7 @@ jobs:
         run: |
           cat -A inventory.ini
           ansible-playbook -i inventory.ini install_k3s.yml -vvv
+
 
 
 
