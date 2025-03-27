@@ -107,7 +107,7 @@ resource "aws_instance" "python_vm" {
       "python3 --version",
       "sudo ufw allow 22",  # Ensure port 22 is allowed
       "sudo ufw allow 8080",  # Ensure port 8080 is open in UFW firewall
-      "sudo ufw enable"
+      "sudo ufw --force enable"
     ]
 
     connection {
