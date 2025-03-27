@@ -1,32 +1,3 @@
-variable "AZURE_SUBSCRIPTION_ID" {
-  description = "Azure Subscription ID"
-  type        = string
-}
-
-variable "AZURE_CLIENT_ID" {
-  description = "Azure Client ID"
-  type        = string
-}
-
-variable "AZURE_CLIENT_SECRET" {
-  description = "Azure Client Secret"
-  type        = string
-  sensitive   = true
-}
-
-variable "AZURE_TENANT_ID" {
-  description = "Azure Tenant ID"
-  type        = string
-}
-
-provider "azurerm" {
-  features {}
-  subscription_id = var.AZURE_SUBSCRIPTION_ID
-  client_id       = var.AZURE_CLIENT_ID
-  client_secret   = var.AZURE_CLIENT_SECRET
-  tenant_id       = var.AZURE_TENANT_ID
-}
-
 # Resource Group
 resource "azurerm_resource_group" "test" {
   name     = "test-new"
@@ -137,12 +108,4 @@ resource "azurerm_linux_virtual_machine" "test_vm" {
 output "test_vm_public_ip" {
   description = "Public IP of the test VM"
   value       = azurerm_public_ip.test_pip.ip_address
-}
-
-resource "null_resource" "ansible_playbook" {
-  depends_on = [azurerm_linux_virtual_machine.test_vm]
-
-  provisioner "local-exec" {
-    command = "sleep 90 && ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ${azurerm_public_ip.test_pip.ip_address}, -u azureuser --private-key=./azure.pem install_k3s.yml -vv"
-  }
 }
