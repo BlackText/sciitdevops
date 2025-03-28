@@ -5,6 +5,11 @@ variable "azure_region" {
   default     = "East US"  # Change this to your desired region
 }
 
+# Provider configuration for Azure
+provider "azurerm" {
+  features {}
+}
+
 # Resource Group
 resource "azurerm_resource_group" "rg" {
   name     = "python-rg"
@@ -71,11 +76,15 @@ resource "azurerm_network_interface" "python_nic" {
   name                = "python-nic"
   location            = var.azure_region
   resource_group_name = azurerm_resource_group.rg.name
-  subnet_id           = azurerm_subnet.subnet.id
-  private_ip_address  = "10.0.0.4"
-  public_ip_address_id = azurerm_public_ip.python_ip.id
 
-  network_security_group_id = azurerm_network_security_group.python_sg.id
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnet.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.python_ip.id
+
+    network_security_group_id     = azurerm_network_security_group.python_sg.id
+  }
 }
 
 # Azure VM for Python setup
