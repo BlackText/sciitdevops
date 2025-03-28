@@ -72,16 +72,16 @@ resource "azurerm_network_interface" "python_nic" {
   location            = var.azure_region
   resource_group_name = azurerm_resource_group.rg.name
 
+  # IP Configuration
   ip_configuration {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.python_ip.id
-
-    network_security_group {
-      id = azurerm_network_security_group.python_sg.id  # Correct placement within ip_configuration
-    }
   }
+
+  # Directly associate the Network Security Group (NSG) to the NIC
+  network_security_group = azurerm_network_security_group.python_sg
 }
 
 # Azure VM for Python setup
