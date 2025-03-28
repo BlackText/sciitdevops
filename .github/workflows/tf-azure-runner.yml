@@ -53,7 +53,6 @@ jobs:
           rm -rf /tmp/aws/
           export AWS_REGION=us-east-1  # Change this to your desired region
           aws ssm get-parameter --name "provider_azure" --query "Parameter.Value" --output text --region $AWS_REGION >> ./providers.tf
-          cat aws.pem
 
 
       # - name: Authenticate with Azure
