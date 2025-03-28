@@ -78,7 +78,9 @@ resource "azurerm_network_interface" "python_nic" {
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.python_ip.id
 
-    network_security_group        = azurerm_network_security_group.python_sg  # Correct argument name
+    network_security_group {
+      id = azurerm_network_security_group.python_sg.id  # Correct placement within ip_configuration
+    }
   }
 }
 
