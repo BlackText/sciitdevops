@@ -5,11 +5,6 @@ variable "azure_region" {
   default     = "East US"  # Change this to your desired region
 }
 
-# Provider configuration for Azure
-provider "azurerm" {
-  features {}
-}
-
 # Resource Group
 resource "azurerm_resource_group" "rg" {
   name     = "python-rg"
