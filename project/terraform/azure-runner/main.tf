@@ -1,136 +1,137 @@
-# Declare the Azure region variable directly within the main.tf
-variable "azure_region" {
+
+variable "location" {
   description = "Azure region for the infrastructure"
   type        = string
-  default     = "East US"  # Change this to your desired region
+  default     = "East US"
 }
 
-# Resource Group
-resource "azurerm_resource_group" "rg" {
-  name     = "python-rg"
-  location = var.azure_region
+resource "azurerm_resource_group" "rg2" {
+  name     = "python-rg2-new"  # Change this name
+  location = var.location
 }
 
 # Virtual Network
 resource "azurerm_virtual_network" "vnet" {
   name                = "python-vnet"
-  location            = var.azure_region
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg2.name
   address_space       = ["10.0.0.0/16"]
 }
 
-# Subnet
-resource "azurerm_subnet" "subnet" {
-  name                 = "python-subnet"
-  resource_group_name  = azurerm_resource_group.rg.name
+# Subnets
+resource "azurerm_subnet" "public_subnet" {
+  name                 = "public-subnet"
+  resource_group_name  = azurerm_resource_group.rg2.name
   virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = ["10.0.0.0/24"]
+  address_prefixes     = ["10.0.3.0/24"]
 }
 
-# Network Security Group for the Python instance
-resource "azurerm_network_security_group" "python_sg" {
-  name                = "python-security-group"
-  location            = var.azure_region
-  resource_group_name = azurerm_resource_group.rg.name
-
-  security_rule {
-    name                       = "Allow-SSH"
-    priority                   = 1000
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                  = "Tcp"
-    source_port_range         = "*"
-    destination_port_range    = 22
-    source_address_prefix     = "*"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "Allow-HTTP"
-    priority                   = 1001
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                  = "Tcp"
-    source_port_range         = "*"
-    destination_port_range    = 8080
-    source_address_prefix     = "*"
-    destination_address_prefix = "*"
-  }
+# Network Security Group
+resource "azurerm_network_security_group" "nsg" {
+  name                = "python-nsg"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg2.name
 }
 
-# Public IP for the Azure VM
-resource "azurerm_public_ip" "python_ip" {
-  name                = "python-ip"
-  location            = var.azure_region
-  resource_group_name = azurerm_resource_group.rg.name
-  allocation_method   = "Dynamic"
+resource "azurerm_subnet_network_security_group_association" "nsg_assoc" {
+  subnet_id                 = azurerm_subnet.public_subnet.id
+  network_security_group_id = azurerm_network_security_group.nsg.id
+}
+
+# Security rules
+resource "azurerm_network_security_rule" "allow_ssh" {
+  name                        = "Allow-SSH"
+  priority                    = 1001
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "22"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.rg2.name
+  network_security_group_name = azurerm_network_security_group.nsg.name
+}
+
+resource "azurerm_network_security_rule" "allow_http" {
+  name                        = "Allow-HTTP"
+  priority                    = 1002
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "8080"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.rg2.name
+  network_security_group_name = azurerm_network_security_group.nsg.name
 }
 
 # Network Interface
-resource "azurerm_network_interface" "python_nic" {
+resource "azurerm_network_interface" "nic" {
   name                = "python-nic"
-  location            = var.azure_region
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg2.name
 
-  # IP Configuration
   ip_configuration {
-    name                          = "internal"
-    subnet_id                     = azurerm_subnet.subnet.id
+    name                          = "public-ip"
+    subnet_id                     = azurerm_subnet.public_subnet.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.python_ip.id
-  }
-
-  # Correct way to associate NSG to Network Interface
-  network_security_group {
-    id = azurerm_network_security_group.python_sg.id
+    public_ip_address_id          = azurerm_public_ip.ip.id
   }
 }
 
-# Azure VM for Python setup
-resource "azurerm_linux_virtual_machine" "python_vm" {
+# Public IP
+resource "azurerm_public_ip" "ip" {
+  name                = "python-public-ip"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg2.name
+  allocation_method   = "Static"  # <-- Change this from Dynamic to Static
+  sku                = "Standard"  # Explicitly define SKU
+}
+
+# Linux Virtual Machine
+resource "azurerm_linux_virtual_machine" "vm" {
   name                = "python-vm"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = var.azure_region
-  size                = "Standard_B2ms"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg2.name
+  size               = "Standard_B2s"
   admin_username      = "azureuser"
+
+  network_interface_ids = [azurerm_network_interface.nic.id]
+
   admin_ssh_key {
     username   = "azureuser"
-    public_key = file("./azure.pub")  # Path to your public key
+    public_key = file("./azure.pem.pub")
   }
 
-  network_interface_ids = [
-    azurerm_network_interface.python_nic.id,
-  ]
-
-  tags = {
-    Name = "python-server"
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
   }
 
-  # Install Python on the Azure VM using a custom script
-  provisioner "remote-exec" {
-    inline = [
-      "sleep 60",  # Wait for 60 seconds to ensure the VM is initialized
-      "sudo ufw disable",  # Disable UFW for testing purposes
-      "sudo apt update -y",
-      "sudo apt install -y python3 python3-pip",
-      "sudo apt install -y python3-venv",
-      "python3 --version",
-      "sudo ufw allow 22",  # Ensure port 22 is allowed
-      "sudo ufw allow 8080",  # Ensure port 8080 is open in UFW firewall
-      "sudo ufw --force enable"
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "azureuser"
-      private_key = file("./azure.pem")  # Path to your private key (make sure it's the private key for your 'azureuser')
-      host        = azurerm_linux_virtual_machine.python_vm.public_ip_address
-    }
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
   }
+
+  custom_data = base64encode(<<EOF
+#!/bin/bash
+sleep 60
+sudo apt update -y
+sudo apt install -y python3 python3-pip
+sudo apt install -y python3-venv
+python3 --version
+EOF
+  )
 }
 
-# Output Instance Public IP
-output "python_vm_public_ip" {
-  description = "Public IP of the Python server"
-  value       = azurerm_linux_virtual_machine.python_vm.public_ip_address
+# Output VM Public IP
+output "vm_public_ip" {
+  description = "Public IP of the Python VM"
+  value       = azurerm_public_ip.ip.ip_address
 }
+
+
